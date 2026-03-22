@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "blender-weave": {
+      "command": "uv",
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}/..", "blender-weave"]
+    }
+  }
+}

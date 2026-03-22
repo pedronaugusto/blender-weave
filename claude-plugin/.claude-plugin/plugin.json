@@ -1,0 +1,8 @@
+{
+  "name": "blender-weave",
+  "version": "1.0.0",
+  "description": "AI-powered 3D scene creation with Blender",
+  "author": { "name": "Pedro Augusto" },
+  "license": "MIT",
+  "keywords": ["blender", "3d", "mcp"]
+}

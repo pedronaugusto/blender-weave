@@ -1,0 +1,13 @@
+schema_version = "1.0.0"
+id = "blender_weave"
+version = "1.0.0"
+name = "Blender Weave"
+tagline = "Connect Blender to AI via MCP"
+maintainer = "Pedro Augusto"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:MIT"]
+tags = ["Interface", "Scripting"]
+
+[permissions]
+network = "MCP server communication and asset APIs"

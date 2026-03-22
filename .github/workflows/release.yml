@@ -1,0 +1,42 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build addon zip
+        run: cd addon && zip -r ../blender_weave.zip . -x '*.pyc' '__pycache__/*'
+
+      - name: create github release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: blender_weave.zip
+          generate_release_notes: true
+
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: build package
+        run: pip install build && python -m build
+
+      - name: publish to pypi
+        uses: pypa/gh-action-pypi-publish@release/v1

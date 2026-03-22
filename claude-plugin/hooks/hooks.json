@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__blender-weave__execute_blender_code",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "STOP. execute_blender_code is the FALLBACK. Check structured tools first: create_object, transform_object, manage_materials, manage_lights, set_camera, manage_world, mesh_operation, modify_object, build_node_graph, procedural_generate, manage_armature, set_keyframe, manage_physics, manage_collections, manage_hierarchy, render_scene, render_region, import_model, batch_execute. Only proceed if NO structured tool covers this operation."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__blender-weave__.*",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check result for VERIFY FAIL lines. If present, stop and fix (use recursive=True for hierarchies). Otherwise continue."
+          }
+        ]
+      }
+    ]
+  }
+}

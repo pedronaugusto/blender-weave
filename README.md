@@ -323,9 +323,9 @@ Individual features can be toggled in the addon panel under "Scene Perception".
 | **Hunyuan3D** | Text/image-to-3D via Tencent's model |
 | **Trellis2** | Image-to-3D via local inference |
 
-For Apple Silicon (macOS) users, these forks add Metal/MPS support:
-- [trellis2-apple](https://github.com/pedronaugusto/trellis2-apple) — runs as a local server, easy to set up
-- [hunyuan3d-apple](https://github.com/pedronaugusto/hunyuan3d-apple) — MLX backend for macOS
+For local inference, we recommend these forks which support both CUDA and Apple Silicon (MLX/Metal):
+- [trellis2-apple](https://github.com/pedronaugusto/trellis2-apple) — local HTTP server, MLX backend for macOS
+- [hunyuan3d-apple](https://github.com/pedronaugusto/hunyuan3d-apple) — local HTTP server, MLX backend for macOS
 
 | Tool | What it does |
 |------|-------------|

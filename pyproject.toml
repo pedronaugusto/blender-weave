@@ -1,6 +1,6 @@
 [project]
 name = "blender-weave"
-version = "1.0.0"
+version = "1.0.1"
 description = "Weave 3D worlds with AI — the MCP server for Blender"
 readme = "README.md"
 requires-python = ">=3.10"

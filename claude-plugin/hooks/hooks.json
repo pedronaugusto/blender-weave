@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Check result for VERIFY FAIL lines. If present, stop and fix (use recursive=True for hierarchies). Otherwise continue."
+            "prompt": "If the result contains 'No Blender connected' or 'connection refused' or the tool errored: STOP and tell the user: You need the BlenderWeave Blender addon running. Make sure Blender is open with the addon enabled. If you don't have it installed: 1) Download blender_weave.zip from https://github.com/pedronaugusto/blender-weave/releases 2) In Blender: Edit > Preferences > Extensions > Install from Disk 3) Select the zip and enable BlenderWeave — it auto-connects. If the result contains VERIFY FAIL lines, stop and fix (use recursive=True for hierarchies). Otherwise continue normally."
           }
         ]
       }

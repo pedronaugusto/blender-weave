@@ -31,10 +31,9 @@ def discover_servers():
         try:
             meta = json.loads(meta_file.read_text())
             pid = meta.get("pid")
-            if pid and _pid_alive(pid):
-                sock_file = meta_file.with_suffix(".sock")
-                if sock_file.exists():
-                    servers.append((meta_file.stem, meta))
+            port = meta.get("port")
+            if pid and port and _pid_alive(pid):
+                servers.append((meta_file.stem, meta))
         except Exception:
             pass
     # Sort by start time (newest first)
@@ -42,8 +41,20 @@ def discover_servers():
     return servers
 
 
+_IS_WINDOWS = os.name == 'nt'
+
+
 def _pid_alive(pid: int) -> bool:
-    """Check if a process is still running."""
+    """Check if a process is still running (cross-platform)."""
+    if _IS_WINDOWS:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return False
     try:
         os.kill(pid, 0)
         return True
@@ -68,7 +79,7 @@ def _server_label(meta: dict) -> str:
 
 
 class BlenderWeaveClient:
-    """Unix socket client that discovers and connects to MCP servers.
+    """TCP loopback client that discovers and connects to MCP servers.
 
     Scans ~/.blenderweave/servers/ for available MCP servers.
     Auto-connects if exactly one server found, or connects to a specified one.
@@ -113,23 +124,23 @@ class BlenderWeaveClient:
         print("BlenderWeave client stopped")
 
     def _try_connect(self):
-        """Discover a server and connect via unix socket."""
+        """Discover a server and connect via TCP loopback."""
         if not self._running:
             return
         self.state = self.CONNECTING
 
         # Find the server to connect to
-        socket_path = None
+        port = None
         if self.server_id:
             # Specific server requested
-            socket_path = SERVERS_DIR / f"{self.server_id}.sock"
             meta_path = SERVERS_DIR / f"{self.server_id}.json"
-            if not socket_path.exists():
+            if not meta_path.exists():
                 self.state = self.DISCONNECTED
                 self._schedule_reconnect()
                 return
             try:
                 meta = json.loads(meta_path.read_text())
+                port = meta.get("port")
                 self.server_label = _server_label(meta)
             except Exception:
                 self.server_label = self.server_id
@@ -144,12 +155,17 @@ class BlenderWeaveClient:
             sid, meta = servers[0]
             self.server_id = sid
             self.server_label = _server_label(meta)
-            socket_path = SERVERS_DIR / f"{sid}.sock"
+            port = meta.get("port")
+
+        if not port:
+            self.state = self.DISCONNECTED
+            self._schedule_reconnect()
+            return
 
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2.0)
-            sock.connect(str(socket_path))
+            sock.connect(('127.0.0.1', port))
             sock.settimeout(None)
             with self._lock:
                 self.socket = sock

@@ -22,22 +22,24 @@ import time
 import uuid
 from datetime import datetime, timezone
 
-# Server directory for unix socket discovery
+# Server directory for discovery
 SERVERS_DIR = Path.home() / ".blenderweave" / "servers"
+
+IS_WINDOWS = os.name == 'nt'
 
 
 class BlenderConnection:
-    """Unix socket listener that accepts connections from Blender addon clients.
+    """TCP loopback listener that accepts connections from Blender addon clients.
 
-    Creates a socket at ~/.blenderweave/servers/{id}.sock with a JSON sidecar
-    for discovery. Blender addons scan the directory and connect automatically.
+    Listens on 127.0.0.1 with an OS-assigned port. Writes metadata to
+    ~/.blenderweave/servers/{id}.json for discovery. Works on all platforms.
     Survives Blender restarts without MCP server restart.
     """
 
     def __init__(self):
         self.server_id = uuid.uuid4().hex[:12]
-        self.socket_path = SERVERS_DIR / f"{self.server_id}.sock"
         self.meta_path = SERVERS_DIR / f"{self.server_id}.json"
+        self.port: int = None
         self.client_sock: socket.socket = None
         self._listener: socket.socket = None
         self._listener_thread: threading.Thread = None
@@ -45,7 +47,7 @@ class BlenderConnection:
         self._running = False
 
     def start_listener(self):
-        """Start the unix socket listener. Called once at MCP server startup."""
+        """Start the TCP loopback listener. Called once at MCP server startup."""
         if self._running:
             return
         self._running = True
@@ -53,22 +55,21 @@ class BlenderConnection:
         # Ensure directory exists
         SERVERS_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Clean up stale sockets from dead processes
+        # Clean up stale servers from dead processes
         self._cleanup_stale_servers()
 
-        # Remove socket file if it exists (shouldn't, but safety)
-        if self.socket_path.exists():
-            self.socket_path.unlink()
-
-        self._listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._listener.settimeout(1.0)
         try:
-            self._listener.bind(str(self.socket_path))
+            self._listener.bind(('127.0.0.1', 0))
+            self.port = self._listener.getsockname()[1]
             self._listener.listen(5)
 
             # Write metadata sidecar for addon discovery
             meta = {
                 "pid": os.getpid(),
+                "port": self.port,
                 "cwd": os.getcwd(),
                 "started": datetime.now(timezone.utc).isoformat(),
             }
@@ -76,14 +77,14 @@ class BlenderConnection:
 
             self._listener_thread = threading.Thread(target=self._accept_loop, daemon=True)
             self._listener_thread.start()
-            logger.info(f"Listening on {self.socket_path}")
+            logger.info(f"Listening on 127.0.0.1:{self.port}")
         except OSError as e:
-            logger.error(f"Failed to listen on {self.socket_path}: {e}")
+            logger.error(f"Failed to listen on 127.0.0.1: {e}")
             self._running = False
 
     @staticmethod
     def _cleanup_stale_servers():
-        """Remove socket/meta files from dead processes."""
+        """Remove metadata files from dead processes."""
         if not SERVERS_DIR.exists():
             return
         for meta_file in SERVERS_DIR.glob("*.json"):
@@ -91,9 +92,6 @@ class BlenderConnection:
                 meta = json.loads(meta_file.read_text())
                 pid = meta.get("pid")
                 if pid and not _pid_alive(pid):
-                    sock_file = meta_file.with_suffix(".sock")
-                    if sock_file.exists():
-                        sock_file.unlink()
                     meta_file.unlink()
                     logger.info(f"Cleaned up stale server {meta_file.stem} (pid {pid})")
             except Exception:
@@ -144,13 +142,12 @@ class BlenderConnection:
                 except Exception:
                     pass
                 self.client_sock = None
-        # Clean up files
-        for f in (self.socket_path, self.meta_path):
-            try:
-                if f.exists():
-                    f.unlink()
-            except Exception:
-                pass
+        # Clean up metadata file
+        try:
+            if self.meta_path.exists():
+                self.meta_path.unlink()
+        except Exception:
+            pass
 
     def connect(self) -> bool:
         """Check if a Blender client is connected."""
@@ -236,7 +233,16 @@ class BlenderConnection:
 
 
 def _pid_alive(pid: int) -> bool:
-    """Check if a process is still running."""
+    """Check if a process is still running (cross-platform)."""
+    if IS_WINDOWS:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return False
     try:
         os.kill(pid, 0)
         return True

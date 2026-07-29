@@ -158,7 +158,9 @@ def test_no_af_unix_references():
     server_py = os.path.join(os.path.dirname(__file__), 'src', 'blender_weave', 'server.py')
     bridge_py = os.path.join(os.path.dirname(__file__), 'addon', 'server_bridge.py')
     for path in [server_py, bridge_py]:
-        with open(path) as f:
+        # encoding is explicit: on Windows the default locale codec (cp1252)
+        # cannot decode the UTF-8 punctuation in these sources.
+        with open(path, encoding='utf-8') as f:
             for i, line in enumerate(f, 1):
                 assert 'AF_UNIX' not in line, f"AF_UNIX at {path}:{i}"
                 # Check for .sock file paths (not .socket attribute)

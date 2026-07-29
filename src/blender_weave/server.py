@@ -1,5 +1,10 @@
 # blender_weave_server.py
-from mcp.server.fastmcp import FastMCP, Context, Image
+try:
+    # mcp < 2.0
+    from mcp.server.fastmcp import FastMCP, Context, Image
+except ImportError:
+    # mcp >= 2.0 renamed the module and the class: fastmcp.FastMCP -> mcpserver.MCPServer
+    from mcp.server.mcpserver import MCPServer as FastMCP, Context, Image
 import socket
 import struct
 import json
@@ -282,7 +287,7 @@ def get_blender_connection():
     """Get the BlenderConnection listener.
 
     The listener is created at MCP server startup. Blender addons discover
-    the unix socket and connect automatically. This function verifies a
+    the TCP loopback port and connect automatically. This function verifies a
     client is connected.
     """
     global _blender_connection

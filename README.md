@@ -9,7 +9,7 @@ Claude Code / Cursor / Codex / any MCP client
     │ stdio (MCP Protocol)
     ▼
 BlenderWeave MCP Server         ← pip install / uvx / bundled via plugin
-    │ unix socket (~/.blenderweave/servers/)
+    │ TCP loopback (port advertised in ~/.blenderweave/servers/)
     │ length-prefixed JSON
     ▲
 BlenderWeave Addon               ← installed in Blender
@@ -69,7 +69,7 @@ Then add to your client's MCP config:
 
 ### Connect
 
-1. Start your AI (Claude Code, Cursor, etc.) — the MCP server starts and creates a unix socket
+1. Start your AI (Claude Code, Cursor, etc.) — the MCP server starts and listens on a TCP loopback port
 2. Open Blender — the addon auto-discovers the server and connects
 3. In Blender's 3D View sidebar (press **N**), find the **BlenderWeave** tab
 4. The panel has two tabs: **Core** (always on) and **External** (asset integrations)

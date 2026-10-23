@@ -1,7 +1,7 @@
 """Smoke test for the TCP loopback transport layer.
 
 Tests the server listener + client connection without Blender.
-Run: python test_transport.py
+Run: python tests/test_transport.py
 """
 import json
 import socket
@@ -12,7 +12,7 @@ import sys
 import os
 
 # Add src to path so we can import the server module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
 from blender_weave.server import BlenderConnection, _pid_alive, SERVERS_DIR
 
@@ -155,8 +155,8 @@ def test_stale_cleanup():
 
 def test_no_af_unix_references():
     """Verify no AF_UNIX references remain in source files."""
-    server_py = os.path.join(os.path.dirname(__file__), 'src', 'blender_weave', 'server.py')
-    bridge_py = os.path.join(os.path.dirname(__file__), 'addon', 'server_bridge.py')
+    server_py = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src', 'blender_weave', 'server.py')
+    bridge_py = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'addon', 'server_bridge.py')
     for path in [server_py, bridge_py]:
         with open(path) as f:
             for i, line in enumerate(f, 1):

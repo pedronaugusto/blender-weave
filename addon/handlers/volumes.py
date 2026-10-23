@@ -4,6 +4,14 @@ import traceback
 from ._utils import select_only, ensure_object_mode
 
 
+def _voxel_size_mode(node):
+    """Set a Mesh to Volume node to resolve by voxel size: a property in Blender 4.x, a menu input in 5.x."""
+    if hasattr(node, "resolution_mode"):
+        node.resolution_mode = 'VOXEL_SIZE'
+    elif "Resolution Mode" in node.inputs:
+        node.inputs["Resolution Mode"].default_value = 'Size'
+
+
 def _check_version():
     """Check if Blender version supports volume grids (5.0+)."""
     if bpy.app.version < (5, 0, 0):
@@ -129,7 +137,7 @@ def _mesh_to_sdf(object_name, voxel_size):
 
     m2v = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v.location = (200, 0)
-    m2v.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v)
     m2v.inputs['Voxel Size'].default_value = voxel_size
 
     tree.links.new(inp.outputs[0], m2v.inputs['Mesh'])
@@ -180,7 +188,7 @@ def _sdf_boolean(object_name, target_object, operation, voxel_size):
     # MeshToVolume for source (from group input)
     m2v_a = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v_a.location = (0, 100)
-    m2v_a.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v_a)
     m2v_a.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(inp.outputs[0], m2v_a.inputs['Mesh'])
 
@@ -193,7 +201,7 @@ def _sdf_boolean(object_name, target_object, operation, voxel_size):
     # MeshToVolume for target
     m2v_b = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v_b.location = (0, -200)
-    m2v_b.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v_b)
     m2v_b.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(obj_info.outputs['Geometry'], m2v_b.inputs['Mesh'])
 
@@ -229,7 +237,7 @@ def _sdf_offset(object_name, distance, voxel_size):
     # MeshToVolume
     m2v = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v.location = (0, 0)
-    m2v.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v)
     m2v.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(inp.outputs[0], m2v.inputs['Mesh'])
 
@@ -259,7 +267,7 @@ def _sdf_fillet(object_name, radius, voxel_size):
     # MeshToVolume
     m2v = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v.location = (0, 0)
-    m2v.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v)
     m2v.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(inp.outputs[0], m2v.inputs['Mesh'])
 
@@ -272,7 +280,7 @@ def _sdf_fillet(object_name, radius, voxel_size):
     # Back to volume
     m2v_2 = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v_2.location = (400, 0)
-    m2v_2.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v_2)
     m2v_2.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(v2m_dilate.outputs[0], m2v_2.inputs['Mesh'])
 
@@ -303,7 +311,7 @@ def _sdf_smooth(object_name, iterations, voxel_size):
     # MeshToVolume
     m2v = tree.nodes.new('GeometryNodeMeshToVolume')
     m2v.location = (0, 0)
-    m2v.resolution_mode = 'VOXEL_SIZE'
+    _voxel_size_mode(m2v)
     m2v.inputs['Voxel Size'].default_value = voxel_size
     tree.links.new(inp.outputs[0], m2v.inputs['Mesh'])
 
@@ -319,7 +327,7 @@ def _sdf_smooth(object_name, iterations, voxel_size):
 
         m2v_r = tree.nodes.new('GeometryNodeMeshToVolume')
         m2v_r.location = (x_pos + 200, 0)
-        m2v_r.resolution_mode = 'VOXEL_SIZE'
+        _voxel_size_mode(m2v_r)
         m2v_r.inputs['Voxel Size'].default_value = voxel_size
         tree.links.new(v2m_d.outputs[0], m2v_r.inputs['Mesh'])
 
@@ -332,7 +340,7 @@ def _sdf_smooth(object_name, iterations, voxel_size):
         if i < iterations - 1:
             m2v_next = tree.nodes.new('GeometryNodeMeshToVolume')
             m2v_next.location = (x_pos + 600, 0)
-            m2v_next.resolution_mode = 'VOXEL_SIZE'
+            _voxel_size_mode(m2v_next)
             m2v_next.inputs['Voxel Size'].default_value = voxel_size
             tree.links.new(v2m_e.outputs[0], m2v_next.inputs['Mesh'])
             last_output = m2v_next.outputs[0]

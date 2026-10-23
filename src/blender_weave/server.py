@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import base64
 from urllib.parse import urlparse
+import subprocess
+from . import docs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -26,6 +28,10 @@ from datetime import datetime, timezone
 SERVERS_DIR = Path.home() / ".blenderweave" / "servers"
 
 IS_WINDOWS = os.name == 'nt'
+
+
+class BlenderError(Exception):
+    """An error Blender reported for a command (bad arguments, a failing script): the connection is fine."""
 
 
 class BlenderConnection:
@@ -195,7 +201,7 @@ class BlenderConnection:
         data = self._recv_exact(sock, msg_len)
         response = json.loads(data.decode('utf-8'))
         if response.get("status") == "error":
-            raise Exception(response.get("message", "Unknown error from Blender"))
+            raise BlenderError(response.get("message", "Unknown error from Blender"))
         return response.get("result", {})
 
     # Commands that must NEVER be retried
@@ -215,6 +221,8 @@ class BlenderConnection:
         try:
             logger.info(f"Sending: {command_type}")
             return self._send_and_receive(command)
+        except BlenderError:
+            raise   # Blender answered: an error in the command, not in the connection, which stays
         except (ConnectionError, BrokenPipeError, ConnectionResetError, OSError) as e:
             logger.warning(f"Blender connection lost ({e})")
             self.disconnect()
@@ -343,11 +351,222 @@ def get_viewport_screenshot(ctx: Context, max_size: int = 800) -> Image:
 
 
 @mcp.tool()
-def execute_blender_code(ctx: Context, code: str):
-    """Run arbitrary bpy Python in Blender. FALLBACK only — use structured tools first (manage_materials, manage_lights, manage_world, set_viewport, save_file, etc.). One operation per call."""
+def execute_blender_code(ctx: Context, code: str, keep_namespace: bool = False, namespace_id: str = "default"):
+    """Run bpy Python in Blender. Prefer structured tools first (manage_materials, manage_lights, manage_world, set_viewport, save_file, etc.).
+    stdout and stderr come back; set a variable named `result` to return a value; a failure returns its full traceback.
+    keep_namespace=True keeps variables between calls (per namespace_id), like a session. Check names with search_blender_api first when unsure."""
     def formatter(result):
-        return f"Code executed successfully: {result.get('result', '')}"
-    return _send_and_return("execute_code", {"code": code}, formatter=formatter)
+        out = ["Code executed successfully."]
+        if result.get("result"): out.append("stdout:\n" + result["result"])
+        if result.get("stderr"): out.append("stderr:\n" + result["stderr"])
+        if result.get("value") is not None: out.append("result: " + (result["value"] if isinstance(result["value"], str) else json.dumps(result["value"])))
+        return "\n".join(out)
+    return _send_and_return("execute_code", {"code": code, "keep_namespace": keep_namespace, "namespace_id": namespace_id}, formatter=formatter)
+
+
+# ---- Built-in documentation: the connected Blender's own API, and its version's manual -----------------------------
+
+def _blender_version():
+    r = get_blender_connection().send_command("ping", {})
+    return r.get("blender_version", "unknown"), r
+
+
+def _api_index():
+    version, _ = _blender_version()
+    return version, docs.api(version, lambda path: get_blender_connection().send_command("build_api_docs", {"filepath": path}))
+
+
+@mcp.tool()
+def search_blender_api(ctx: Context, query: str, limit: int = 8) -> str:
+    """Search the connected Blender's Python API: every type with its own properties (types, enum items, defaults), functions,
+    every operator, the Python modules, and every shader/geometry/compositor node's sockets. Read from the running Blender itself,
+    so names and defaults are exact for its version. Use before writing bpy you are unsure of; get_blender_api gives the full entry."""
+    version, (idx, by, meta) = _api_index()
+    hits = idx.search(query, limit)
+    lines = [f"Blender {version} API ({meta['count']} entries) — {query!r}:"]
+    for e, score in hits:
+        first = (e.get("description") or "").strip().splitlines()
+        lines.append(f"- {e['path']} [{e['kind']}]" + (f" — {first[0][:160]}" if first else ""))
+    return "\n".join(lines) if hits else f"No match for {query!r} in Blender {version}'s API."
+
+
+@mcp.tool()
+def get_blender_api(ctx: Context, path: str, offset: int = 0) -> str:
+    """One entry of the connected Blender's API in full, by path (e.g. bpy.types.ShaderNodeBsdfPrincipled, bpy.ops.render.render,
+    mathutils.Matrix): description, own properties (inherited ones are on its base), functions with parameters and returns,
+    a node's input and output sockets with defaults. Long entries come in pieces: pass the offset it gives."""
+    version, (idx, by, meta) = _api_index()
+    e = by.get(path) or by.get("bpy.types." + path) or by.get("bpy.ops." + path)
+    if e is None:
+        near = [x["path"] for x, _ in idx.search(path, 5)]
+        return f"No entry {path!r} in Blender {version}'s API. Nearest: " + ", ".join(near)
+    return docs.page(docs.format_api(e), offset)
+
+
+@mcp.tool()
+def search_blender_manual(ctx: Context, query: str, limit: int = 8) -> str:
+    """Search the Blender manual for the connected Blender's version (its source, fetched once into ~/.blenderweave/docs).
+    How features work, what settings mean, workflows. get_blender_manual gives a section's text."""
+    version, _ = _blender_version()
+    idx, by, entries = docs.manual(version)
+    hits = idx.search(query, limit)
+    lines = [f"Blender {version} manual ({len(entries)} sections) — {query!r}:"]
+    for e, score in hits:
+        first = e["text"].strip().splitlines()
+        lines.append(f"- {e['path']}" + (f" — {first[0][:140]}" if first else ""))
+    return "\n".join(lines) if hits else f"No match for {query!r} in the manual."
+
+
+@mcp.tool()
+def get_blender_manual(ctx: Context, path: str, offset: int = 0) -> str:
+    """A section of the Blender manual by its path (as search_blender_manual gives, page#Section), or a whole page (page alone).
+    The manual is CC BY-SA 4.0, the Blender Foundation's; long text comes in pieces: pass the offset it gives."""
+    version, _ = _blender_version()
+    idx, by, entries = docs.manual(version)
+    if path in by:
+        e = by[path]; return docs.page(f"{e['title']}\n\n{e['text']}", offset)
+    secs = [e for e in entries if e["page"] == path]
+    if secs:
+        return docs.page("\n\n".join(f"## {e['title']}\n{e['text']}" for e in secs), offset)
+    return f"No section {path!r}. Nearest: " + ", ".join(x["path"] for x, _ in idx.search(path, 5))
+
+
+# ---- Seeing Blender's window and moving about it ---------------------------------------------------------------------
+
+def _screenshot(command, params, max_size, max_bytes):
+    """A screenshot as an Image no larger than max_bytes, shrinking until it fits (its base64 and the reply's JSON included)."""
+    path = os.path.join(tempfile.gettempdir(), f"blenderweave_{command}_{os.getpid()}.png")
+    size = max_size
+    for _ in range(4):
+        r = get_blender_connection().send_command(command, {**params, "filepath": path, "max_size": size})
+        if "error" in r:
+            raise Exception(r["error"])
+        data = Path(path).read_bytes()
+        if len(data) * 4 / 3 + 1024 <= max_bytes:
+            os.remove(path); return Image(data=data, format="png")
+        size = int(size * min(0.9, (max_bytes / (len(data) * 4 / 3 + 1024)) ** 0.5))
+    os.remove(path); return Image(data=data, format="png")
+
+
+@mcp.tool()
+def get_window_screenshot(ctx: Context, max_size: int = 1600, max_bytes: int = 1_000_000) -> Image:
+    """The whole Blender window as a PNG (every editor, panels and all), fitted to max_bytes. For one editor use get_area_screenshot."""
+    return _screenshot("screenshot_window", {}, max_size, max_bytes)
+
+
+@mcp.tool()
+def get_area_screenshot(ctx: Context, area_type: str = "VIEW_3D", index: int = 0, max_size: int = 1600, max_bytes: int = 1_000_000) -> Image:
+    """One editor of the window as a PNG: VIEW_3D, NODE_EDITOR, IMAGE_EDITOR, PROPERTIES, OUTLINER, TEXT_EDITOR, ...
+    (index picks among several of a type). get_window_layout lists them."""
+    return _screenshot("screenshot_area", {"area_type": area_type, "index": index}, max_size, max_bytes)
+
+
+@mcp.tool()
+def get_window_layout(ctx: Context) -> str:
+    """The window as data: workspace, every area (type, position, size, what it shows), mode, active object, selection."""
+    return _send_and_return("window_layout", {})
+
+
+@mcp.tool()
+def jump_to_workspace(ctx: Context, name: str) -> str:
+    """Switch the window to a workspace tab (Layout, Modeling, Sculpting, Shading, Geometry Nodes, ...)."""
+    return _send_and_return("jump_to_workspace", {"name": name})
+
+
+@mcp.tool()
+def jump_to_object(ctx: Context, object_name: str, frame: bool = True) -> str:
+    """Select and activate an object and frame it in every 3D viewport."""
+    return _send_and_return("jump_to_object", {"name": object_name, "frame": frame})
+
+
+# ---- What the .blend holds ----------------------------------------------------------------------------------------
+
+@mcp.tool()
+def get_blendfile_summary(ctx: Context, names: int = 8) -> str:
+    """The open .blend: its path, saved/dirty, and every kind of datablock with counts (linked, unused, fake-user) and first names."""
+    return _send_and_return("blendfile_summary", {"names": names})
+
+
+@mcp.tool()
+def get_blendfile_paths(ctx: Context, missing_only: bool = False) -> str:
+    """Every external file the scene uses (images, libraries, sounds, fonts, caches): path as written, absolute, exists. missing_only for broken ones."""
+    return _send_and_return("blendfile_missing" if missing_only else "blendfile_paths", {})
+
+
+@mcp.tool()
+def get_linked_libraries(ctx: Context) -> str:
+    """Linked .blend libraries, where they are, whether they exist, and which datablocks each provides."""
+    return _send_and_return("blendfile_libraries", {})
+
+
+# ---- Blender in the background: a fresh Blender, headless, for scripts and renders that should not hold the window --
+
+_jobs = {}
+
+
+def _blender_binary():
+    try:
+        r = get_blender_connection().send_command("ping", {})
+        if r.get("binary_path") and os.path.exists(r["binary_path"]):
+            return r["binary_path"]
+    except Exception:
+        pass
+    import shutil
+    for c in (shutil.which("blender"), "/Applications/Blender.app/Contents/MacOS/Blender"):
+        if c and os.path.exists(c):
+            return c
+    raise Exception("No Blender binary found: connect Blender once, or put blender on PATH")
+
+
+def _job_report(job_id, tail=6000):
+    j = _jobs[job_id]; code = j["proc"].poll()
+    read = lambda p: Path(p).read_text(errors="replace")[-tail:] if os.path.exists(p) else ""
+    status = "running" if code is None else ("done" if code == 0 else "failed")
+    if j.get("timed_out"): status = "timed out"
+    return json.dumps({"job": job_id, "status": status, "exit_code": code, "seconds": round(time.time() - j["started"], 1),
+                       "stdout_tail": read(j["out"]), "stderr_tail": read(j["err"])}, indent=2)
+
+
+@mcp.tool()
+def run_blender_background(ctx: Context, code: str = "", script_path: str = "", args: List[str] = None, blend_file: str = "",
+                           timeout: int = 600, wait: bool = True, factory_startup: bool = True) -> str:
+    """Run Python in a fresh, headless Blender (blender -b), apart from the open one: batch renders, exports, builds, tests.
+    Give code or a script_path (args after `--` reach it as sys.argv), optionally a blend_file to open first.
+    wait=True returns when it ends (or at timeout seconds); wait=False returns a job id at once, for get_background_job."""
+    if not code and not script_path:
+        return "Give code or script_path."
+    binary = _blender_binary()
+    if code:
+        fd, script_path = tempfile.mkstemp(suffix=".py", prefix="blenderweave_bg_"); os.write(fd, code.encode()); os.close(fd)
+    cmd = [binary, "-b"] + ([blend_file] if blend_file else []) + (["--factory-startup"] if factory_startup else []) + ["--python-exit-code", "1", "--python", script_path]
+    if args: cmd += ["--"] + list(args)
+    job_id = uuid.uuid4().hex[:8]
+    out = os.path.join(tempfile.gettempdir(), f"blenderweave_job_{job_id}.out"); err = out[:-4] + ".err"
+    proc = subprocess.Popen(cmd, stdout=open(out, "w"), stderr=open(err, "w"))
+    _jobs[job_id] = {"proc": proc, "started": time.time(), "out": out, "err": err, "cmd": cmd}
+    if not wait:
+        return json.dumps({"job": job_id, "status": "running", "command": cmd})
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill(); _jobs[job_id]["timed_out"] = True
+    return _job_report(job_id)
+
+
+@mcp.tool()
+def get_background_job(ctx: Context, job_id: str) -> str:
+    """A background Blender job's status (running, done, failed, timed out), exit code, seconds, and the tails of its output."""
+    if job_id not in _jobs:
+        return f"No job {job_id!r}; jobs: {list(_jobs)}"
+    return _job_report(job_id)
+
+
+@mcp.tool()
+def cancel_background_job(ctx: Context, job_id: str) -> str:
+    """Stop a running background Blender job."""
+    if job_id not in _jobs:
+        return f"No job {job_id!r}"
+    _jobs[job_id]["proc"].kill(); return _job_report(job_id)
 
 @mcp.tool()
 def get_polyhaven_categories(ctx: Context, asset_type: str = "hdris") -> str:

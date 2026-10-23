@@ -1,5 +1,12 @@
 # BlenderWeave — Claude Code Instructions
 
+## Documentation First
+
+Blender's API changes between versions (Blender 5 moved actions to layered channel bags, made a node's settings into
+input sockets, renamed Principled BSDF inputs). Before writing bpy you are unsure of, `search_blender_api` and
+`get_blender_api` give the connected Blender's exact names, properties, defaults and node sockets;
+`search_blender_manual` explains features and settings.
+
 ## Feedback Strategy
 
 Scene perception is always-on. Every modifying command returns a compact DSL with depth-sorted objects, spatial relationships, light analysis, shadow footprints, material predictions, spatial facts, and multi-view ray grids.

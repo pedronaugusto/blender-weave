@@ -38,9 +38,15 @@ def generate_lod_chain(object_name, ratios=None, suffix_pattern="_LOD{i}",
             suffix = suffix_pattern.replace("{i}", str(i))
             lod_name = f"{object_name}{suffix}"
 
-            # Duplicate
+            # Duplicate: as the mesh is now (shape keys and modifiers baked from the evaluated object), so
+            # decimation applies even where shape keys would block it; the levels carry no shape keys
             new_obj = obj.copy()
-            new_obj.data = obj.data.copy()
+            if getattr(obj.data, "shape_keys", None) or obj.modifiers:
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+                new_obj.data = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+                new_obj.modifiers.clear()
+            else:
+                new_obj.data = obj.data.copy()
             new_obj.name = lod_name
 
             if target_col:

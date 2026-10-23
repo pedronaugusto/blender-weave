@@ -1,6 +1,6 @@
 # BlenderWeave
 
-MCP server that connects AI to Blender's 3D pipeline — 91 tools covering objects, materials, rigging, animation, physics, node graphs, rendering, and asset integrations. Every modifying command returns structured scene perception in the [Perspicacity](https://github.com/pedronaugusto/perspicacity) format — no screenshots needed for routine feedback.
+MCP server that connects AI to Blender's 3D pipeline — 106 tools covering objects, materials, rigging, animation, physics, node graphs, rendering, asset integrations, Blender's own documentation (its Python API read from the running Blender, and its manual), window capture and navigation, .blend inspection, and headless background jobs. Every modifying command returns structured scene perception in the [Perspicacity](https://github.com/pedronaugusto/perspicacity) format — no screenshots needed for routine feedback.
 
 ## Architecture
 
@@ -9,7 +9,7 @@ Claude Code / Cursor / Codex / any MCP client
     │ stdio (MCP Protocol)
     ▼
 BlenderWeave MCP Server         ← pip install / uvx / bundled via plugin
-    │ unix socket (~/.blenderweave/servers/)
+    │ TCP loopback (127.0.0.1, port in ~/.blenderweave/servers/)
     │ length-prefixed JSON
     ▲
 BlenderWeave Addon               ← installed in Blender
@@ -69,7 +69,7 @@ Then add to your client's MCP config:
 
 ### Connect
 
-1. Start your AI (Claude Code, Cursor, etc.) — the MCP server starts and creates a unix socket
+1. Start your AI (Claude Code, Cursor, etc.) — the MCP server starts and listens on a loopback port
 2. Open Blender — the addon auto-discovers the server and connects
 3. In Blender's 3D View sidebar (press **N**), find the **BlenderWeave** tab
 4. The panel has two tabs: **Core** (always on) and **External** (asset integrations)
@@ -137,7 +137,41 @@ Individual features can be toggled in the addon panel under "Scene Perception".
 | `render_region` | Check a specific object at high quality |
 | `get_viewport_screenshot` | Final review or explicit "show me" |
 
-## Tool Catalog (90+ tools)
+## Tool Catalog (106 tools)
+
+### Blender's Documentation, Built In
+The connected Blender's own Python API, read from the running Blender the first time it is asked for (every type with
+its own properties, enum items, defaults and functions, every operator, the Python modules, and every shader, geometry
+and compositor node's input and output sockets), and the Blender manual's source for the same version, fetched once as
+text. Both live in `~/.blenderweave/docs/<version>/`; nothing of Blender's is shipped with BlenderWeave. The manual is
+the Blender Foundation's, CC BY-SA 4.0.
+| Tool | What it does |
+|------|-------------|
+| `search_blender_api` | Search the API: types, properties, operators, modules, node sockets — exact for this Blender's version |
+| `get_blender_api` | One API entry in full (e.g. `bpy.types.ShaderNodeBsdfPrincipled`: its 32 sockets with defaults) |
+| `search_blender_manual` | Search the manual for how features work and what settings mean |
+| `get_blender_manual` | A manual section, or a whole page, in pieces |
+
+### Window & Navigation
+| Tool | What it does |
+|------|-------------|
+| `get_window_screenshot` | The whole Blender window as PNG, fitted to a byte budget |
+| `get_area_screenshot` | One editor (3D view, node editor, image editor, properties...) as PNG |
+| `get_window_layout` | The window as data: workspace, areas, mode, active object, selection |
+| `jump_to_workspace` / `jump_to_object` | Switch workspace tab; select, activate and frame an object |
+
+### The .blend
+| Tool | What it does |
+|------|-------------|
+| `get_blendfile_summary` | Every kind of datablock: counts, linked, unused, fake-user, first names |
+| `get_blendfile_paths` | External files used, absolute paths, which are missing |
+| `get_linked_libraries` | Linked libraries and what each provides |
+
+### Background Jobs
+| Tool | What it does |
+|------|-------------|
+| `run_blender_background` | Run code or a script in a fresh headless Blender (`blender -b`), waiting or as a job |
+| `get_background_job` / `cancel_background_job` | A job's status, exit code, time and output; stop it |
 
 ### Scene Perception & Feedback
 | Tool | What it does |
@@ -149,7 +183,7 @@ Individual features can be toggled in the addon panel under "Scene Perception".
 | `get_scene_info` | Scene overview — objects, materials, render engine |
 | `get_object_info` | Object details — transform, mesh data, world bounding box |
 | `get_viewport_screenshot` | Full viewport screenshot as PNG |
-| `execute_blender_code` | Run arbitrary Python in Blender (fallback) |
+| `execute_blender_code` | Run Python in Blender: stdout and stderr back, a `result` value returned, full tracebacks, an optional persistent namespace |
 
 ### File & Undo
 | Tool | What it does |
@@ -362,3 +396,15 @@ Contributions welcome.
 ## License
 
 MIT — Pedro Augusto
+
+## Tests
+
+```bash
+uv run python tests/test_docs.py        # the docs index, no Blender needed
+uv run python tests/test_transport.py   # the TCP transport, no Blender needed
+uv run python tests/e2e_new_tools.py    # docs, code, .blend and background tools against a headless Blender
+uv run python tests/e2e_smoke.py        # every structured tool once against a headless Blender
+uv run python tests/e2e_window.py       # the window tools against Blender with a window (it opens and quits)
+```
+The headless tests run Blender in the background with the add-on (`tests/headless_blender.py`): background Blender runs
+no event loop, so its timers are driven there as Blender's main thread would.

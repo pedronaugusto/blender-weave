@@ -1,4 +1,5 @@
 import bpy
+from .scene import _get_fcurves
 import traceback
 
 from ._utils import select_only
@@ -67,7 +68,7 @@ def manage_actions(action, object_name=None, action_name=None, source_action=Non
                     "name": act.name,
                     "users": act.users,
                     "frame_range": [int(act.frame_range[0]), int(act.frame_range[1])],
-                    "fcurve_count": len(act.fcurves),
+                    "fcurve_count": len(_get_fcurves(act)),
                 })
             return {
                 "success": True,
@@ -175,7 +176,7 @@ def manage_actions(action, object_name=None, action_name=None, source_action=Non
                 dp = prop_map.get(dp, dp)
 
             changed = 0
-            for fc in obj.animation_data.action.fcurves:
+            for fc in _get_fcurves(obj.animation_data.action):
                 if dp and fc.data_path != dp:
                     continue
                 for kp in fc.keyframe_points:

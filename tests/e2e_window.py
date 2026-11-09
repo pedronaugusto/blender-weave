@@ -25,7 +25,7 @@ async def main():
                 res = await s.call_tool(name, args)
                 imgs = [c for c in res.content if getattr(c, "type", "") == "image"]
                 txt = "\n".join(c.text for c in res.content if hasattr(c, "text"))
-                good = not res.isError and (imgs or ("Error" not in txt))
+                good = not getattr(res, "is_error", getattr(res, "isError", False)) and (imgs or ("Error" not in txt))
                 ok &= bool(good)
                 for i, im in enumerate(imgs):
                     import base64; data = base64.b64decode(im.data); path = f"{OUT}/{name}_{args.get('area_type', '')}{args.get('max_bytes', '')}.png"

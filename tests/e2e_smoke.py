@@ -99,7 +99,7 @@ async def main():
                 for name, args in CALLS:
                     t = time.time(); res = await s.call_tool(name, args)
                     txt = "\n".join(c.text for c in res.content if hasattr(c, "text"))
-                    bad = res.isError or "Error executing tool" in txt or '"error"' in txt[:400] or txt.startswith("Error")
+                    bad = getattr(res, "is_error", getattr(res, "isError", False)) or "Error executing tool" in txt or '"error"' in txt[:400] or txt.startswith("Error")
                     if bad: failed.append((name, txt[:400]))
                     print(("FAIL" if bad else "ok  "), f"{name:28s}", f"{time.time() - t:5.2f}s", txt[:110].replace("\n", " | ") if bad else "")
             finally:

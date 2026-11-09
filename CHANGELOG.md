@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.2
+
+- Support `mcp` 2.x, and remove the upper bound on `mcp`. Tool failures are now reported so their messages still reach the client under 2.x.
+
 ## v1.1.1
 
 - Fix fresh installs failing at import: they resolved `mcp` 2.x, which removed `mcp.server.fastmcp`. `mcp` is now held below 2.0, because 2.x hides tool error messages from clients. The server can already import under 2.x for a later move.

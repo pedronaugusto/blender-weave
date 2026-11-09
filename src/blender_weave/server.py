@@ -1,10 +1,15 @@
 # blender_weave_server.py
+import functools
+import inspect
+
 try:
     # mcp < 2.0
     from mcp.server.fastmcp import FastMCP, Context, Image
+    from mcp.server.fastmcp.exceptions import ToolError
 except ImportError:
     # mcp >= 2.0 renamed the module and the class: fastmcp.FastMCP -> mcpserver.MCPServer
     from mcp.server.mcpserver import MCPServer as FastMCP, Context, Image
+    from mcp.server.mcpserver.exceptions import ToolError
 import socket
 import struct
 import json
@@ -281,7 +286,44 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         logger.info("BlenderWeave server shut down")
 
 # Create the MCP server with lifespan support
-mcp = FastMCP(
+def _report_errors(fn):
+    """Raise a tool's failures as ToolError: mcp 2.x hides any other exception's message from the client."""
+    def failure(exc):
+        return ToolError(str(exc) or type(exc).__name__)
+
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await fn(*args, **kwargs)
+            except ToolError:
+                raise
+            except Exception as exc:
+                raise failure(exc) from exc
+    else:
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except ToolError:
+                raise
+            except Exception as exc:
+                raise failure(exc) from exc
+    return wrapper
+
+
+class BlenderWeaveServer(FastMCP):
+    def tool(self, *args, **kwargs):
+        register = super().tool(*args, **kwargs)
+
+        def decorator(fn):
+            register(_report_errors(fn))
+            return fn
+
+        return decorator
+
+
+mcp = BlenderWeaveServer(
     "BlenderWeave",
     lifespan=server_lifespan
 )

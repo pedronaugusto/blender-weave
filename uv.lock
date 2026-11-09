@@ -28,14 +28,14 @@ wheels = [
 
 [[package]]
 name = "blender-weave"
-version = "1.1.0"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mcp", extras = ["cli"], specifier = ">=1.3.0" }]
+requires-dist = [{ name = "mcp", extras = ["cli"], specifier = ">=1.3.0,<2" }]
 
 [[package]]
 name = "certifi"

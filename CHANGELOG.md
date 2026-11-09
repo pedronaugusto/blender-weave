@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1
+
+- Fix fresh installs failing at import: they resolved `mcp` 2.x, which removed `mcp.server.fastmcp`. `mcp` is now held below 2.0, because 2.x hides tool error messages from clients. The server can already import under 2.x for a later move.
+- `test_transport.py` reads sources as UTF-8, so it passes on Windows.
+- `__version__` now matches the release version.
+
 ## v1.1.0
 
 ### Blender's documentation, built in

@@ -110,6 +110,8 @@ def create_object(type, name=None, location=None, rotation=None, scale=None,
             cam_data = bpy.data.cameras.new(name=name or "Camera")
             obj = bpy.data.objects.new(name or cam_data.name, cam_data)
             bpy.context.scene.collection.objects.link(obj)
+            if bpy.context.scene.camera is None:   # as Blender's Add menu does: the first camera is the scene's
+                bpy.context.scene.camera = obj
         else:
             return {"error": f"Unknown object type: {type}"}
 

@@ -7,20 +7,16 @@ from ._utils import compute_world_aabb
 
 
 def _get_fcurves(action):
-    """Get fcurves from an action, compatible with both Blender 4.x and 5.x.
-
-    Blender 5 changed the Action API — fcurves may not be a direct attribute.
-    """
+    """Every F-curve of an action, in Blender 4.x (action.fcurves) and 5.x alike (layered actions: each layer's
+    strips' channel bags, one per slot)."""
     if hasattr(action, 'fcurves'):
-        return action.fcurves
-    # Blender 5: fcurves are on action layers/strips
-    try:
-        for layer in action.layers:
-            for strip in layer.strips:
-                return strip.channelbags[0].fcurves
-    except (AttributeError, IndexError):
-        pass
-    return []
+        return list(action.fcurves)
+    out = []
+    for layer in getattr(action, "layers", []):
+        for strip in layer.strips:
+            for bag in getattr(strip, "channelbags", []):
+                out.extend(bag.fcurves)
+    return out
 
 
 def _set_interpolation(action, data_path, frame, interpolation):
@@ -215,17 +211,30 @@ def get_viewport_screenshot(max_size=800, filepath=None, format="png"):
         return {"error": str(e)}
 
 
-def execute_code(code):
-    """Execute arbitrary Blender Python code."""
-    try:
+_namespaces = {}
+
+
+def execute_code(code, keep_namespace=False, namespace_id="default"):
+    """Run Python in Blender. stdout and stderr are captured; a variable named `result` is returned (repr'd if it
+    is not plain data); a failure returns its full traceback. keep_namespace keeps variables between calls (by
+    namespace_id), as a session does."""
+    import sys, traceback
+    from contextlib import redirect_stderr
+    if keep_namespace:
+        namespace = _namespaces.setdefault(namespace_id, {"bpy": bpy})
+    else:
         namespace = {"bpy": bpy}
-        capture_buffer = io.StringIO()
-        with redirect_stdout(capture_buffer):
-            exec(code, namespace)
-        captured_output = capture_buffer.getvalue()
-        return {"executed": True, "result": captured_output}
-    except Exception as e:
-        raise Exception(f"Code execution error: {str(e)}")
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        with redirect_stdout(out), redirect_stderr(err):
+            exec(compile(code, "<blenderweave>", "exec"), namespace)
+    except Exception:
+        tb = traceback.format_exc()
+        raise Exception("Code execution error:\n" + tb + ("\nstdout:\n" + out.getvalue() if out.getvalue() else ""))
+    value = namespace.get("result", None)
+    if value is not None and not isinstance(value, (str, int, float, bool, list, dict, tuple)):
+        value = repr(value)
+    return {"executed": True, "result": out.getvalue(), "stderr": err.getvalue(), "value": value}
 
 
 def set_keyframe(object_name, frame, property="location", value=None,

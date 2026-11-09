@@ -17,6 +17,7 @@ from .handlers import procedural
 from .handlers import perception, file_ops, viewport, lights, world
 from .handlers import snapshots, render_region
 from .handlers import hierarchy, drivers, custom_props, curves, particles
+from .handlers import docs, capture, blendfile
 
 # Discovery directory — shared with MCP server
 SERVERS_DIR = Path.home() / ".blenderweave" / "servers"
@@ -76,6 +77,22 @@ def _server_label(meta: dict) -> str:
         except Exception:
             pass
     return f"{name}{time_str}"
+
+
+def _json_default(o):
+    """What json cannot write, as data: mathutils values as lists, sets as lists, datablocks by name, the rest as text."""
+    if hasattr(o, "to_list"):
+        return o.to_list()
+    if hasattr(o, "__len__") and hasattr(o, "__getitem__") and not isinstance(o, (str, bytes, dict)):
+        try:
+            return [_json_default(x) if not isinstance(x, (int, float, str, bool, type(None))) else x for x in o]
+        except Exception:
+            pass
+    if isinstance(o, (set, frozenset)):
+        return list(o)
+    if hasattr(o, "name") and hasattr(o, "bl_rna"):
+        return o.name
+    return str(o)
 
 
 class BlenderWeaveClient:
@@ -254,7 +271,7 @@ class BlenderWeaveClient:
                     def execute_wrapper(cmd=command, s=sock):
                         try:
                             response = self.execute_command(cmd)
-                            response_bytes = json.dumps(response).encode('utf-8')
+                            response_bytes = json.dumps(response, default=_json_default).encode('utf-8')
                             try:
                                 self._send_framed(s, response_bytes)
                             except Exception:
@@ -295,6 +312,19 @@ class BlenderWeaveClient:
             "get_scene_info": scene.get_scene_info,
             "get_object_info": scene.get_object_info,
             "get_viewport_screenshot": scene.get_viewport_screenshot,
+            # Built-in docs: this Blender's API, read from itself
+            "build_api_docs": docs.build_api_docs,
+            # Seeing and moving about the window
+            "screenshot_window": capture.screenshot_window,
+            "screenshot_area": capture.screenshot_area,
+            "window_layout": capture.window_layout,
+            "jump_to_workspace": capture.jump_to_workspace,
+            "jump_to_object": capture.jump_to_object,
+            # What the .blend holds
+            "blendfile_summary": blendfile.summary,
+            "blendfile_paths": blendfile.paths,
+            "blendfile_missing": blendfile.missing,
+            "blendfile_libraries": blendfile.libraries,
             "execute_code": scene.execute_code,
             "get_polyhaven_status": polyhaven.get_polyhaven_status,
             "get_hyper3d_status": hyper3d.get_hyper3d_status,
@@ -459,6 +489,8 @@ class BlenderWeaveClient:
             return {"status": "success", "result": {
                 "pong": True,
                 "blender_version": ".".join(str(v) for v in bpy.app.version),
+                "binary_path": bpy.app.binary_path,
+                "background": bpy.app.background,
             }}
 
         # Status check (always available, used for health ping)
@@ -509,6 +541,8 @@ class BlenderWeaveClient:
     READ_ONLY = {
         # Query/status
         "get_scene_info", "get_object_info", "get_viewport_screenshot",
+        "build_api_docs", "screenshot_window", "screenshot_area", "window_layout", "jump_to_workspace",
+        "jump_to_object", "blendfile_summary", "blendfile_paths", "blendfile_missing", "blendfile_libraries",
         "analyze_scene", "list_node_types", "get_node_graph",
         "get_polyhaven_status", "get_hyper3d_status",
         "get_sketchfab_status", "get_hunyuan3d_status",

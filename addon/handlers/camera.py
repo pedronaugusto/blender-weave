@@ -38,6 +38,8 @@ def set_camera(camera_name=None, focal_length=None, sensor_width=None,
             cam_obj = bpy.data.objects.get(camera_name)
             if not cam_obj or cam_obj.type != 'CAMERA':
                 return {"error": f"Camera not found: {camera_name}"}
+            if bpy.context.scene.camera is None:
+                bpy.context.scene.camera = cam_obj
         else:
             cam_obj = bpy.context.scene.camera
             if not cam_obj:
@@ -354,6 +356,8 @@ def camera_walkthrough(camera_name=None, waypoints=None, interpolation="BEZIER",
             cam_obj = bpy.data.objects.get(camera_name)
             if not cam_obj or cam_obj.type != 'CAMERA':
                 return {"error": f"Camera not found: {camera_name}"}
+            if bpy.context.scene.camera is None:
+                bpy.context.scene.camera = cam_obj
         else:
             cam_obj = bpy.context.scene.camera
             if not cam_obj:
